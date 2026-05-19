@@ -1,0 +1,52 @@
+# Whitelist 方式: デフォルトで全部無視 → 明示的に許可したものだけ追跡。
+# 理由: 会社からキャプチャした schema_*.json などを誤って add しないため。
+# 新しいファイル/フォルダを追跡したくなったら、下に !pattern を追加すること。
+
+# まず全部無視
+*
+
+# このファイル自体
+!.gitignore
+
+# ルート直下の設定・ドキュメント
+!package.json
+!package-lock.json
+!tsconfig.json
+!README.md
+!.env.example
+!.mcp.json
+
+# ソースコード（src/ 配下すべて）
+!src/
+!src/**
+
+# ドキュメント（docs/ 配下すべて）
+!docs/
+!docs/**
+
+# スクリプト（scripts/ 配下すべて。ただし出力ファイルは含めない設計）
+!scripts/
+!scripts/**
+
+# 証明書置き場（README のみ追跡。.pem/.crt/.cer 等の実ファイルは追跡しない）
+!certs/
+!certs/README.md
+
+# --- 個人メモ・作業メモ用（追跡対象外） ---
+# ホワイトリスト方式なので、以下のパターンは明示しなくても自動的に無視される。
+# 「ここに置けばコミット事故なし」と把握しておくための一覧：
+#   memo/                   ← 個人メモディレクトリ
+#   notes/                  ← 個人ノート
+#   scratch/                ← 作業用一時ファイル
+#   NOTES.md / MEMO.md      ← ルート直下の個人メモ
+#   TODO.md / TODO.private.md
+#   *.memo / *.note / *.scratch
+#   *.local.*               ← 環境固有設定（例: settings.local.json）
+# git status で見えないことを必ず確認してから commit すること。
+
+# --- ここから下は将来用テンプレ。test-env/ などを作ったら必要な行のコメントを外す ---
+# !test-env/
+# !test-env/docker-compose.yml
+# !test-env/README.md
+# 注意: test-env/captured/ や test-env/data/ など、機密になりうるサブディレクトリは
+# 上記のように「ファイル単位」で許可すること。!test-env/** は使わない。

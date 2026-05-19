@@ -1,0 +1,32 @@
+{
+  "name": "redmine-mcp",
+  "version": "0.1.0",
+  "description": "Redmine MCP server for AI agents (Copilot CLI, Claude Code, etc.)",
+  "type": "module",
+  "bin": {
+    "redmine-mcp": "./dist/index.js"
+  },
+  "main": "./dist/index.js",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "dev": "tsx --env-file=.env --use-system-ca src/index.ts",
+    "build": "tsc",
+    "start": "node --env-file=.env --use-system-ca dist/index.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
