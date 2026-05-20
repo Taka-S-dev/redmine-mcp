@@ -1,10 +1,72 @@
 import type { RedmineClient } from "../redmine/client.js";
 import type { MetadataCache } from "../redmine/metadata.js";
-import type { RedmineIssue } from "../types.js";
+import type { RedmineIssue, RedmineCustomField } from "../types.js";
 
 export interface ToolContext {
   client: RedmineClient;
   metadata: MetadataCache;
+}
+
+/**
+ * ローカルタイムゾーン基準の「今日」を YYYY-MM-DD で返す。
+ * new Date().toISOString() は UTC 基準なので、日本時間の早朝などに
+ * 日付が 1 日ずれる。overdue 判定や「今日」の計算にはこちらを使う。
+ */
+export function localDateString(date: Date = new Date()): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+/**
+ * カスタムフィールドのフィルタ値を、マッチング方式に応じて Redmine クエリ用の値に解決する。
+ *
+ * - exact モード: 値をそのまま使う（完全一致）。
+ * - partial モード:
+ *   - リスト型 CF（possible_values あり）: Redmine の `~` 演算子はリスト型に効かないため、
+ *     選択肢の中から入力文字列を含むものを探し、その「完全な値」に置き換える。
+ *     1 件に絞れれば成功、0 件・複数件はエラー（候補を提示）。
+ *   - 文字列/テキスト型 CF: Redmine の `~`（部分一致）演算子をそのまま使う。
+ */
+export function resolveCfFilterValue(
+  cf: RedmineCustomField | undefined,
+  rawValue: string,
+  partial: boolean,
+): { ok: true; value: string } | { ok: false; error: string } {
+  if (!partial) {
+    return { ok: true, value: rawValue };
+  }
+
+  const possibleValues = cf?.possible_values?.map((pv) => pv.value) ?? [];
+  const isList = possibleValues.length > 0;
+
+  if (isList) {
+    const needle = rawValue.trim().toLowerCase();
+    const matches = possibleValues.filter((v) =>
+      v.toLowerCase().includes(needle),
+    );
+    if (matches.length === 0) {
+      return {
+        ok: false,
+        error:
+          `カスタムフィールド「${cf?.name}」に「${rawValue}」を含む選択肢がありません。` +
+          `利用可能な選択肢: ${possibleValues.join(", ")}`,
+      };
+    }
+    if (matches.length === 1) {
+      return { ok: true, value: matches[0] };
+    }
+    return {
+      ok: false,
+      error:
+        `「${rawValue}」はカスタムフィールド「${cf?.name}」の複数の選択肢にマッチします` +
+        `（${matches.join(", ")}）。1 つに絞って指定してください。`,
+    };
+  }
+
+  // 文字列/テキスト型 CF は Redmine の `~` 演算子が効く
+  return { ok: true, value: `~${rawValue}` };
 }
 
 /**

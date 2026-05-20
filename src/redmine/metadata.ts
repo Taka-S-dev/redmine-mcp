@@ -21,13 +21,20 @@ export interface RedmineMetadata {
 }
 
 export class MetadataCache {
+  /**
+   * キャッシュの有効期間（ミリ秒）。これを超えて古いと get() で自動再取得する。
+   * Redmine 側で CF・トラッカー等を追加したとき、手動 refresh を忘れても
+   * 一定時間で自動的に追従させるのが目的。
+   */
+  private static readonly TTL_MS = 15 * 60 * 1000;
+
   private cache: RedmineMetadata | null = null;
   private inflight: Promise<RedmineMetadata> | null = null;
 
   constructor(private readonly client: RedmineClient) {}
 
   async get(): Promise<RedmineMetadata> {
-    if (this.cache) return this.cache;
+    if (this.cache && !this.isStale(this.cache)) return this.cache;
     if (this.inflight) return this.inflight;
     this.inflight = this.load();
     try {
@@ -36,6 +43,12 @@ export class MetadataCache {
     } finally {
       this.inflight = null;
     }
+  }
+
+  /** キャッシュが TTL を超えて古くなっているか。 */
+  private isStale(cache: RedmineMetadata): boolean {
+    const age = Date.now() - new Date(cache.fetchedAt).getTime();
+    return age > MetadataCache.TTL_MS;
   }
 
   async refresh(): Promise<RedmineMetadata> {

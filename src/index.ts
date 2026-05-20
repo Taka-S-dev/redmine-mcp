@@ -13,6 +13,8 @@ import * as describeSchema from "./tools/describe-schema.js";
 import * as refreshMetadata from "./tools/refresh-metadata.js";
 import * as listTimeEntries from "./tools/list-time-entries.js";
 import * as aggregateIssues from "./tools/aggregate-issues.js";
+import * as quickSearch from "./tools/quick-search.js";
+import * as exportIssuesCsv from "./tools/export-issues-csv.js";
 
 function readConfig() {
   const url = process.env.REDMINE_URL;
@@ -71,6 +73,8 @@ async function main() {
   refreshMetadata.register(server, ctx);
   listTimeEntries.register(server, ctx);
   aggregateIssues.register(server, ctx);
+  quickSearch.register(server, ctx);
+  exportIssuesCsv.register(server, ctx);
 
   const transport = new StdioServerTransport();
   await server.connect(transport);

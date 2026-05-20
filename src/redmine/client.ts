@@ -7,6 +7,7 @@ import type {
   RedmineUser,
   RedmineActivity,
   RedmineTimeEntry,
+  RedmineSearchResult,
   PaginatedResponse,
 } from "../types.js";
 
@@ -49,6 +50,9 @@ export class RedmineClient {
     return `${this.config.url}/issues/${id}`;
   }
 
+  /** リトライ回数（初回 + リトライ）。一時的なネットワーク障害・5xx 用。 */
+  private static readonly MAX_ATTEMPTS = 3;
+
   private async request<T>(
     path: string,
     params?: Record<string, string | number | undefined>,
@@ -60,39 +64,69 @@ export class RedmineClient {
       }
     }
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(
-      () => controller.abort(),
-      this.config.timeoutMs,
-    );
+    let lastError: unknown;
 
-    try {
-      const res = await fetch(url, {
-        headers: {
-          "X-Redmine-API-Key": this.config.apiKey,
-          Accept: "application/json",
-        },
-        signal: controller.signal,
-      });
+    for (
+      let attempt = 1;
+      attempt <= RedmineClient.MAX_ATTEMPTS;
+      attempt++
+    ) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(
+        () => controller.abort(),
+        this.config.timeoutMs,
+      );
+      const isLast = attempt === RedmineClient.MAX_ATTEMPTS;
 
-      if (!res.ok) {
+      try {
+        const res = await fetch(url, {
+          headers: {
+            "X-Redmine-API-Key": this.config.apiKey,
+            Accept: "application/json",
+          },
+          signal: controller.signal,
+        });
+
+        if (res.ok) {
+          return (await res.json()) as T;
+        }
+
+        // エラーレスポンス
         let body: unknown;
         try {
           body = await res.json();
         } catch {
           body = await res.text().catch(() => undefined);
         }
-        throw new RedmineApiError(
+        const apiError = new RedmineApiError(
           `Redmine API error: ${res.status} ${res.statusText} (${url.pathname})`,
           res.status,
           body,
         );
+        // 5xx（サーバー側の一時障害）はリトライ。4xx はリトライ無意味なので即時失敗。
+        if (res.status >= 500 && !isLast) {
+          lastError = apiError;
+        } else {
+          throw apiError;
+        }
+      } catch (err) {
+        // RedmineApiError（4xx・最終 5xx）はそのまま投げる
+        if (err instanceof RedmineApiError) throw err;
+        // ネットワークエラー・タイムアウトはリトライ対象
+        lastError = err;
+        if (isLast) throw err;
+        process.stderr.write(
+          `[redmine-mcp] リクエスト失敗（${attempt}/${RedmineClient.MAX_ATTEMPTS}）、リトライします: ${url.pathname}\n`,
+        );
+      } finally {
+        clearTimeout(timeoutId);
       }
 
-      return (await res.json()) as T;
-    } finally {
-      clearTimeout(timeoutId);
+      // リトライ前の待機（指数的バックオフ: 300ms, 600ms…）
+      await new Promise((resolve) => setTimeout(resolve, 300 * attempt));
     }
+
+    throw lastError;
   }
 
   /**
@@ -200,6 +234,34 @@ export class RedmineClient {
   async getCurrentUser(): Promise<RedmineUser> {
     const res = await this.request<{ user: RedmineUser }>("users/current.json");
     return res.user;
+  }
+
+  /**
+   * Redmine の全文検索 API。件名・本文・コメントを横断してキーワード検索する。
+   * projectIdentifier を渡すとそのプロジェクト配下に限定する。
+   */
+  async search(
+    query: string,
+    options: {
+      projectIdentifier?: string;
+      openIssuesOnly?: boolean;
+      maxItems?: number;
+    } = {},
+  ): Promise<PaginatedResponse<RedmineSearchResult>> {
+    const path = options.projectIdentifier
+      ? `projects/${options.projectIdentifier}/search.json`
+      : "search.json";
+    const params: Record<string, string | number | undefined> = {
+      q: query,
+      issues: 1,
+    };
+    if (options.openIssuesOnly) params.open_issues = 1;
+    return this.requestAllPaginated<RedmineSearchResult>(
+      path,
+      "results",
+      params,
+      options.maxItems ?? 50,
+    );
   }
 
   async listActivities(): Promise<RedmineActivity[]> {

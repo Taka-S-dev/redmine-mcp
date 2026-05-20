@@ -7,6 +7,8 @@ import {
   selectProjects,
   fetchIssuesForSelection,
   sortIssuesBySpec,
+  resolveCfFilterValue,
+  localDateString,
   type ToolContext,
 } from "./context.js";
 import type { RedmineIssue } from "../types.js";
@@ -38,7 +40,32 @@ const inputShape = {
   subject_contains: z
     .string()
     .optional()
-    .describe("件名（subject）に含まれる文字列で絞り込み。"),
+    .describe(
+      "件名で絞り込み（部分一致）。" +
+        "Redmine の標準フィールド subject に対応。" +
+        "ユーザーが「件名」「題名」「タイトル」「サマリ」と言ったらこれ。",
+    ),
+  description_contains: z
+    .string()
+    .optional()
+    .describe(
+      "説明文（チケット本文）で絞り込み（部分一致）。" +
+        "Redmine の標準フィールド description に対応。" +
+        "ユーザーが「説明」「内容」「本文」「詳細」「概要」「中身」と言ったら基本これ" +
+        "（会社の Redmine では GUI 上のラベルが「内容」等にカスタマイズされていることがある）。" +
+        "ただし describe_schema のカスタムフィールド一覧に同名のフィールドがある場合は、" +
+        "そちらは custom_fields で指定すること。" +
+        "「本文に『決定事項』と書かれているチケット」のような検索に使う。",
+    ),
+  notes_contains: z
+    .string()
+    .optional()
+    .describe(
+      "コメント（注記・履歴のコメント）で絞り込み（部分一致）。" +
+        "Redmine の journals に対応。" +
+        "ユーザーが「コメント」「注記」「やりとり」「履歴のコメント」と言ったらこれ。" +
+        "「『再現しません』とコメントされたチケット」のような検索に使う。",
+    ),
   created_after: z
     .string()
     .optional()
@@ -62,6 +89,16 @@ const inputShape = {
       "カスタムフィールドの絞り込み。フィールド名（日本語可）→ 値 のマップ。" +
         "例: {'カテゴリ': 'ログイン', '緊急度': '高'}。" +
         "list_custom_fields または describe_schema で利用可能なフィールドを確認できる。",
+    ),
+  custom_field_match: z
+    .enum(["exact", "partial"])
+    .optional()
+    .describe(
+      "custom_fields の値のマッチング方式。デフォルト 'exact'（完全一致）。" +
+        "'partial' は部分一致。リスト型 CF（選択肢あり）では、選択肢の中から" +
+        "入力文字列を含むものを 1 つ特定して使う（例: 'ログイン' → 'ログイン機能'）。" +
+        "複数候補にマッチ／該当なしの場合は候補を提示するエラーになるので、絞り直すこと。" +
+        "文字列・テキスト型 CF では通常の部分一致になる。",
     ),
   due_after: z
     .string()
@@ -125,6 +162,7 @@ export function register(server: McpServer, ctx: ToolContext) {
         "結果は要約情報のみ返すので、詳細が必要なチケットは get_issue で取得すること。" +
         "カスタムフィールド名は日本語のまま指定でき、内部で ID に解決される。" +
         "overdue=true で期限切れ抽出、parent_id で親チケット配下の子チケット列挙、count_only=true で件数だけ取得（トークン節約）が可能。" +
+        "各チケットの応答に parent_id が含まれる（値があれば子チケット、null なら親チケット）。" +
         "各チケットの url フィールドにブラウザで開けるリンクが含まれているので、リンク提示の際はこれをそのまま使うこと（ベース URL を別途ユーザーに尋ねる必要はない）。",
       inputSchema: inputShape,
     },
@@ -150,7 +188,7 @@ export function register(server: McpServer, ctx: ToolContext) {
             "overdue=true は status='open' とのみ併用可能です。status を省略するか 'open' を指定してください。",
           );
         }
-        const today = new Date().toISOString().slice(0, 10);
+        const today = localDateString();
         dueBefore = dueBefore && dueBefore < today ? dueBefore : today;
       }
 
@@ -222,9 +260,15 @@ export function register(server: McpServer, ctx: ToolContext) {
         params.tracker_id = id;
       }
 
-      // Subject contains (Redmine supports `subject=~keyword`)
+      // Text 部分一致（Redmine は `field=~keyword` で LIKE 検索）
       if (args.subject_contains) {
         params.subject = `~${args.subject_contains}`;
+      }
+      if (args.description_contains) {
+        params.description = `~${args.description_contains}`;
+      }
+      if (args.notes_contains) {
+        params.notes = `~${args.notes_contains}`;
       }
 
       // Date filters
@@ -269,6 +313,7 @@ export function register(server: McpServer, ctx: ToolContext) {
 
       // Custom fields
       if (args.custom_fields) {
+        const partial = args.custom_field_match === "partial";
         const unresolved: string[] = [];
         for (const [name, value] of Object.entries(args.custom_fields)) {
           const id = ctx.metadata.resolveCustomFieldId(name);
@@ -276,7 +321,13 @@ export function register(server: McpServer, ctx: ToolContext) {
             unresolved.push(name);
             continue;
           }
-          params[`cf_${id}`] = value;
+          // partial 指定時はリスト型/文字列型に応じて値を解決する
+          const cfDef = metadata.customFields.find((c) => c.id === id);
+          const resolved = resolveCfFilterValue(cfDef, value, partial);
+          if (!resolved.ok) {
+            return errorResult(resolved.error);
+          }
+          params[`cf_${id}`] = resolved.value;
         }
         if (unresolved.length > 0) {
           if (!metadata.customFieldsAvailable) {
@@ -310,6 +361,10 @@ export function register(server: McpServer, ctx: ToolContext) {
             scope:
               projectSelection.kind === "fanOut"
                 ? { fan_out: projectSelection.identifiers }
+                : undefined,
+            hint:
+              result.total_count === 0
+                ? zeroResultHint(params)
                 : undefined,
           });
         } catch (err) {
@@ -346,9 +401,11 @@ export function register(server: McpServer, ctx: ToolContext) {
               : undefined,
           issues: trimmed,
           hint:
-            result.total_count > trimmed.length
-              ? `${result.total_count} 件中 ${trimmed.length} 件を返却。limit を増やすか条件を絞り込んでください。`
-              : undefined,
+            result.total_count === 0
+              ? zeroResultHint(params)
+              : result.total_count > trimmed.length
+                ? `${result.total_count} 件中 ${trimmed.length} 件を返却。limit を増やすか条件を絞り込んでください。`
+                : undefined,
         });
       } catch (err) {
         if (err instanceof RedmineApiError) {
@@ -357,6 +414,41 @@ export function register(server: McpServer, ctx: ToolContext) {
         throw err;
       }
     },
+  );
+}
+
+/**
+ * 0 件ヒット時の、文脈に応じた再検索ガイド。
+ * カスタムフィールド絞り込みの有無などでヒント内容を変える。
+ */
+function zeroResultHint(
+  params: Record<string, string | number | undefined>,
+): string {
+  const usedCustomField = Object.keys(params).some((k) =>
+    k.startsWith("cf_"),
+  );
+  const usedTextFilter =
+    params.subject !== undefined ||
+    params.description !== undefined ||
+    params.notes !== undefined;
+
+  if (usedCustomField) {
+    return (
+      "0 件ヒットしました。カスタムフィールドの値は既定で完全一致です。" +
+      "指定した値が選択肢と完全一致していない可能性があります。" +
+      "custom_field_match: 'partial' を指定して再検索するか、" +
+      "quick_search でキーワードを全文検索してみてください。"
+    );
+  }
+  if (usedTextFilter) {
+    return (
+      "0 件ヒットしました。件名・本文・コメントの部分一致で見つからない場合は、" +
+      "quick_search（全文検索）でキーワードを単語単位で探すと見つかることがあります。"
+    );
+  }
+  return (
+    "0 件ヒットしました。条件が厳しすぎる可能性があります。" +
+    "条件を緩めるか、キーワードで探すなら quick_search を試してください。"
   );
 }
 
@@ -369,6 +461,7 @@ function trimIssueForList(issue: RedmineIssue, baseUrl: string) {
     tracker: issue.tracker?.name,
     status: issue.status?.name,
     priority: issue.priority?.name,
+    parent_id: issue.parent?.id ?? null,
     assigned_to: issue.assigned_to?.name,
     author: issue.author?.name,
     done_ratio: issue.done_ratio,

@@ -26,6 +26,7 @@ export interface RedmineIssue {
   fixed_version?: RedmineRef;
   subject: string;
   description?: string;
+  parent?: { id: number };
   start_date?: string;
   due_date?: string;
   done_ratio: number;
@@ -155,4 +156,13 @@ export interface PaginatedResponse<T> {
   offset: number;
   limit: number;
   items: T[];
+}
+
+export interface RedmineSearchResult {
+  id: number;
+  title: string;
+  type: string;
+  url: string;
+  description: string;
+  datetime: string;
 }

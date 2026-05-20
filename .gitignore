@@ -15,6 +15,9 @@
 !README.md
 !.env.example
 !.mcp.json
+!copilot-instructions.example.md
+# 注意: copilot-instructions.md（実物）は会社固有の用語・運用を含むため
+# 追跡しない。テンプレート (.example.md) のみ追跡する。
 
 # ソースコード（src/ 配下すべて）
 !src/
@@ -31,6 +34,10 @@
 # 証明書置き場（README のみ追跡。.pem/.crt/.cer 等の実ファイルは追跡しない）
 !certs/
 !certs/README.md
+
+# CSV エクスポート出力先（export_issues_csv が書き出す。中身は追跡しない）
+# ホワイトリスト方式なので exports/ は明示しなくても自動的に無視される。
+# 業務データを含む CSV が誤コミットされないための想定配置。
 
 # --- 個人メモ・作業メモ用（追跡対象外） ---
 # ホワイトリスト方式なので、以下のパターンは明示しなくても自動的に無視される。

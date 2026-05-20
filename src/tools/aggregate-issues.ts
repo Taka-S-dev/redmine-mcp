@@ -6,8 +6,11 @@ import {
   errorResult,
   selectProjects,
   fetchIssuesForSelection,
+  resolveCfFilterValue,
+  localDateString,
   type ToolContext,
 } from "./context.js";
+import { writeCsv } from "./csv.js";
 import type { RedmineIssue } from "../types.js";
 
 const GROUP_KEYS = [
@@ -53,6 +56,14 @@ const inputShape = {
     .describe(
       "カスタムフィールドでの絞り込み。例: {'カテゴリ': 'ログイン'}。",
     ),
+  custom_field_match: z
+    .enum(["exact", "partial"])
+    .optional()
+    .describe(
+      "custom_fields の値のマッチング方式。デフォルト 'exact'（完全一致）。" +
+        "'partial' は部分一致。リスト型 CF は選択肢から入力文字列を含むものを 1 つ特定" +
+        "（例: 'ログイン' → 'ログイン機能'）、文字列型 CF は通常の部分一致。",
+    ),
   parent_id: z.number().int().positive().optional(),
 
   // 集計指定
@@ -93,6 +104,19 @@ const inputShape = {
     .describe(
       "集計のために Redmine から取得する最大チケット数。デフォルト 500。" +
         "本数が多すぎる場合は条件を絞ること。",
+    ),
+  export_csv: z
+    .boolean()
+    .optional()
+    .describe(
+      "true にすると集計結果（groups）を CSV ファイルとして exports/ に保存する。" +
+        "「集計結果を Excel/CSV で」と言われたとき用。応答には csv_path も含まれる。",
+    ),
+  filename: z
+    .string()
+    .optional()
+    .describe(
+      "export_csv=true のときの出力ファイル名。省略時は aggregate_<日時>.csv。",
     ),
 };
 
@@ -148,7 +172,7 @@ export function register(server: McpServer, ctx: ToolContext) {
             "overdue=true は status='open' とのみ併用可能です。",
           );
         }
-        const today = new Date().toISOString().slice(0, 10);
+        const today = localDateString();
         dueBefore = dueBefore && dueBefore < today ? dueBefore : today;
       }
       if (
@@ -196,6 +220,7 @@ export function register(server: McpServer, ctx: ToolContext) {
       setDateRange("updated_on", args.updated_after, args.updated_before);
       setDateRange("due_date", args.due_after, dueBefore);
       if (args.custom_fields) {
+        const partial = args.custom_field_match === "partial";
         for (const [name, value] of Object.entries(args.custom_fields)) {
           const cfId = ctx.metadata.resolveCustomFieldId(name);
           if (!cfId) {
@@ -203,7 +228,12 @@ export function register(server: McpServer, ctx: ToolContext) {
               `カスタムフィールド '${name}' が見つかりません（フィルタ用）。`,
             );
           }
-          params[`cf_${cfId}`] = value;
+          const cfDef = metadata.customFields.find((c) => c.id === cfId);
+          const resolved = resolveCfFilterValue(cfDef, value, partial);
+          if (!resolved.ok) {
+            return errorResult(resolved.error);
+          }
+          params[`cf_${cfId}`] = resolved.value;
         }
       }
       if (args.parent_id !== undefined) {
@@ -301,6 +331,31 @@ export function register(server: McpServer, ctx: ToolContext) {
 
         const top = args.top ? groupArray.slice(0, args.top) : groupArray;
 
+        // CSV エクスポート（任意）
+        let csvInfo: { csv_path: string; relative_path: string } | undefined;
+        if (args.export_csv) {
+          // ヘッダ: group_by キー（cf: 接頭辞は除去）+ メトリクス名
+          const header = [
+            ...groupKeys.map((k) =>
+              k.startsWith("cf:") ? k.slice(3) : k,
+            ),
+            ...metrics,
+          ];
+          const rows = top.map((row) => [
+            ...groupKeys.map((k) => String(row[k] ?? "")),
+            ...metrics.map((m) => String(row[m] ?? "")),
+          ]);
+          const saved = await writeCsv(
+            [header, ...rows],
+            args.filename,
+            "aggregate",
+          );
+          csvInfo = {
+            csv_path: saved.csvPath,
+            relative_path: saved.relativePath,
+          };
+        }
+
         return jsonResult({
           source: {
             total_matched: result.total_count,
@@ -317,6 +372,14 @@ export function register(server: McpServer, ctx: ToolContext) {
           sort_by: sortBy,
           group_count: groupArray.length,
           groups: top,
+          ...(csvInfo
+            ? {
+                csv_path: csvInfo.csv_path,
+                relative_path: csvInfo.relative_path,
+                csv_note:
+                  "集計結果を CSV 出力しました。Excel で開けます（UTF-8 BOM 付き）。",
+              }
+            : {}),
         });
       } catch (err) {
         if (err instanceof RedmineApiError) {

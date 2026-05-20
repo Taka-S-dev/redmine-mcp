@@ -8,6 +8,8 @@ Redmine のチケット検索・集計・分析を、AI エージェント（Git
 - 「カテゴリが "ログイン" のバグチケット一覧」
 - 「チケット #1234 のバグの原因を分析して」
 - 「先週更新されたチケットを教えて」
+- 「ログインまわりのチケットをざっくり探して」（全文検索）
+- 「期限切れチケットを CSV で出力して」（Excel 対応 CSV をサーバー側生成）
 
 カスタムフィールド（"カテゴリ" など）は**フィールド名のまま指定可能**。Redmine 側で新しい選択肢を追加しても、コード修正なしで使えます（`refresh_metadata` ツールで反映）。
 
@@ -207,8 +209,10 @@ VSCode を再起動。
 
 | ツール | 用途 |
 |---|---|
-| `search_issues` | チケット検索（最も使うツール）。overdue / count_only / parent_id 等の便利フィルタあり |
+| `search_issues` | チケットを条件で厳密に検索。overdue / count_only / parent_id 等の便利フィルタあり |
+| `quick_search` | 曖昧なキーワードで全文検索（件名・本文・コメント横断） |
 | `get_issue` | チケット詳細 + コメント履歴 + 関連チケット |
+| `export_issues_csv` | チケットを CSV エクスポート（**サーバー側生成で高速・Excel 対応**） |
 | `list_time_entries` | 工数集計（**親チケットの子全件一括対応**） |
 | `aggregate_issues` | クロス集計（**トークン節約・サーバー側集計**） |
 | `list_projects` | プロジェクト一覧 |
@@ -225,6 +229,8 @@ VSCode を再起動。
 3. `src/index.ts` に `import` と `register` 呼び出しを追加
 
 既存ツールがテンプレートとして使えます。`src/tools/list-projects.ts` が一番シンプル。
+
+**コードを修正・拡張する場合は、まず [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)（設計書）を読んでください。** 全体構成・設計思想・拡張手順・注意点がまとまっています。
 
 ## 会社環境（社内 CA・自己署名証明書を使う Redmine の場合）
 
@@ -267,24 +273,35 @@ MITM 攻撃に無防備になります。トラブルシューティングの一
 | `self-signed certificate` / `unable to verify the first certificate` | 上記「会社環境」セクション参照 |
 | カスタムフィールド名で絞り込めない | `list_custom_fields` で実際の名前を確認、または `refresh_metadata` |
 | 件数が多すぎて切り捨てられた | `search_issues` の `limit` を増やすか条件を絞る |
+| 完全一致でしかヒットしない | 曖昧検索は `quick_search`、CF 値の部分一致は `custom_field_match: "partial"` |
+| CSV 出力が遅い | `export_issues_csv` を使う（サーバー側生成で高速。LLM に表を書かせない） |
+| CSV を Excel で開くと文字化け | `export_issues_csv` は UTF-8 BOM 付きで出力するので化けない。手書き CSV なら BOM を付ける |
 
 ## アーキテクチャ
 
 ```
 src/
-├── index.ts              # MCP サーバー起動
+├── index.ts              # MCP サーバー起動・ツール登録
 ├── types.ts              # Redmine API レスポンスの型定義
 ├── redmine/
 │   ├── client.ts         # fetch ベースの薄い API ラッパー
-│   └── metadata.ts       # CF/トラッカー/ステータス/プロジェクトのキャッシュ
+│   └── metadata.ts       # CF/トラッカー/ステータス/プロジェクト/Activity のキャッシュ
 └── tools/
-    ├── context.ts        # ツール共通の型・ヘルパー
-    ├── search-issues.ts
-    ├── get-issue.ts
+    ├── context.ts        # ツール共通の型・ヘルパー（スコープ解決・fan-out 等）
+    ├── search-issues.ts        # 条件検索
+    ├── quick-search.ts         # 全文検索
+    ├── get-issue.ts            # チケット詳細
+    ├── export-issues-csv.ts    # CSV エクスポート
+    ├── list-time-entries.ts    # 工数集計
+    ├── aggregate-issues.ts     # クロス集計
     ├── list-projects.ts
     ├── list-custom-fields.ts
     ├── describe-schema.ts
     └── refresh-metadata.ts
 ```
 
-依存は `@modelcontextprotocol/sdk` と `zod` のみ（サプライチェーン最小化）。HTTP は Node 標準の `fetch`、環境変数は `node --env-file` を利用。
+出力先 `exports/`（CSV）と `certs/`（証明書）はランタイムで生成・配置される。
+
+依存は `@modelcontextprotocol/sdk` と `zod` のみ（サプライチェーン最小化）。HTTP は Node 標準の `fetch`、環境変数は `node --env-file`、CSV 書き出しは `node:fs` を利用。
+
+詳しい設計（レイヤー構造・各モジュールの責務・拡張方法・修正時の注意点）は **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** にまとめています。

@@ -7,6 +7,7 @@ import {
   selectProjects,
   type ToolContext,
 } from "./context.js";
+import { writeCsv } from "./csv.js";
 import type { RedmineTimeEntry } from "../types.js";
 
 const inputShape = {
@@ -60,6 +61,19 @@ const inputShape = {
     .optional()
     .describe(
       "個別エントリを含めて返すか。デフォルト true。集計だけ欲しいときは false にするとトークン大幅節約。",
+    ),
+  export_csv: z
+    .boolean()
+    .optional()
+    .describe(
+      "true にすると工数エントリを CSV ファイルとして exports/ に保存する。" +
+        "「工数を Excel/CSV で」と言われたとき用。応答には csv_path も含まれる。",
+    ),
+  filename: z
+    .string()
+    .optional()
+    .describe(
+      "export_csv=true のときの出力ファイル名。省略時は time_entries_<日時>.csv。",
     ),
 };
 
@@ -230,6 +244,42 @@ export function register(server: McpServer, ctx: ToolContext) {
             }))
           : undefined;
 
+        // CSV エクスポート（任意）
+        let csvInfo: { csv_path: string; relative_path: string } | undefined;
+        if (args.export_csv) {
+          const header = [
+            "id",
+            "spent_on",
+            "hours",
+            "user",
+            "activity",
+            "issue_id",
+            "issue_url",
+            "project",
+            "comments",
+          ];
+          const rows = allEntries.map((e) => [
+            String(e.id),
+            e.spent_on ?? "",
+            String(e.hours),
+            e.user?.name ?? "",
+            e.activity?.name ?? "",
+            e.issue?.id != null ? String(e.issue.id) : "",
+            e.issue?.id != null ? `${ctx.client.baseUrl}/issues/${e.issue.id}` : "",
+            e.project?.name ?? "",
+            e.comments ?? "",
+          ]);
+          const saved = await writeCsv(
+            [header, ...rows],
+            args.filename,
+            "time_entries",
+          );
+          csvInfo = {
+            csv_path: saved.csvPath,
+            relative_path: saved.relativePath,
+          };
+        }
+
         return jsonResult({
           parent_issue_id: args.parent_issue_id,
           scope:
@@ -242,6 +292,14 @@ export function register(server: McpServer, ctx: ToolContext) {
           by_issue: byIssue,
           by_activity: byActivity,
           entries,
+          ...(csvInfo
+            ? {
+                csv_path: csvInfo.csv_path,
+                relative_path: csvInfo.relative_path,
+                csv_note:
+                  "工数エントリを CSV 出力しました。Excel で開けます（UTF-8 BOM 付き）。",
+              }
+            : {}),
         });
       } catch (err) {
         if (err instanceof RedmineApiError) {
