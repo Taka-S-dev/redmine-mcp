@@ -17,12 +17,22 @@ export function register(server: McpServer, ctx: ToolContext) {
       const metadata = await ctx.metadata.get();
       if (!metadata.customFieldsAvailable) {
         return errorResult(
-          `カスタムフィールド一覧の取得に失敗しています（Redmine 管理者権限が必要）: ${metadata.customFieldsError ?? "不明"}`,
+          `カスタムフィールド一覧を取得できていません: ${metadata.customFieldsError ?? "不明"}`,
         );
       }
       return jsonResult({
         count: metadata.customFields.length,
         fetched_at: metadata.fetchedAt,
+        source: metadata.customFieldsSource,
+        ...(metadata.customFieldsSource === "issue-scan"
+          ? {
+              note:
+                "管理者権限が無いため、最近の issue データからカスタムフィールドを" +
+                "抽出した。possible_values は実際に使われている値のみ（未使用の" +
+                "選択肢は含まれない）。field_format は値の種類数からの推定" +
+                "（list / string）。",
+            }
+          : {}),
         custom_fields: metadata.customFields.map((cf) => ({
           id: cf.id,
           name: cf.name,

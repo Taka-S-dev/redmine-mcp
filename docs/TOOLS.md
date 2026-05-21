@@ -565,7 +565,9 @@ Redmine のプロジェクト一覧を返す。`search_issues` の `project` 引
 
 カスタムフィールド定義の一覧を返す。`search_issues` の `custom_fields` パラメータで使えるフィールド名と、選択肢型なら `possible_values` も取れる。
 
-> **管理者権限が必要**。一般ユーザーの API キーだとこのツールはエラーになる（他のツールは動く）。
+> **管理者権限は不要**。`/custom_fields.json` は Redmine の仕様で管理者専用だが、管理者権限が無い場合は最近の issue データ（500 件）を走査して CF を自動復元する。返却値の `source` でどちらか分かる（`api` = 管理者 API / `issue-scan` = issue から推定）。
+>
+> `issue-scan` のときの制約: `possible_values` は「実際に使われている値」のみ（未使用の選択肢は出ない）。全 issue で一度も値が入っていない CF は一覧に出ない。`field_format` は値の種類数からの推定値。絞り込み・集計の用途では実用上十分。
 
 ### 引数
 
@@ -577,6 +579,7 @@ Redmine のプロジェクト一覧を返す。`search_issues` の `project` 引
 {
   "count": 3,
   "fetched_at": "2026-05-19T14:00:00.000Z",
+  "source": "api",                       // "api" or "issue-scan"
   "custom_fields": [
     {
       "id": 5,
@@ -595,9 +598,11 @@ Redmine のプロジェクト一覧を返す。`search_issues` の `project` 引
 
 ### エラー時
 
+API 取得・issue 走査の**両方が失敗した場合のみ**エラーになる（通常は発生しない）：
+
 ```jsonc
 {
-  "error": "カスタムフィールド一覧の取得に失敗しています（Redmine 管理者権限が必要）: ..."
+  "error": "カスタムフィールド一覧を取得できていません: API での取得に失敗（...）し、issue 走査によるフォールバックも失敗（...）。"
 }
 ```
 
@@ -641,6 +646,7 @@ Redmine のプロジェクト一覧を返す。`search_issues` の `project` 引
       "possible_values": ["ログイン", "検索", "決済"]
     }
   ],
+  "custom_fields_source": "api",   // "api" = 管理者 API / "issue-scan" = issue から推定
   "activities": [                  // 工数の作業分類（list_time_entries で使う）
     { "id": 9, "name": "設計", "is_default": false },
     { "id": 10, "name": "実装", "is_default": true },
@@ -649,12 +655,12 @@ Redmine のプロジェクト一覧を返す。`search_issues` の `project` 引
 }
 ```
 
-CF が管理者権限不足で取れない場合：
+管理者権限が無い場合は `custom_fields_source` が `"issue-scan"` になり、`custom_fields_note` が付く（CF は issue データから復元、`possible_values` は使用中の値のみ）。API・走査とも失敗したときだけ `custom_fields` がオブジェクト形式になる：
 
 ```jsonc
 "custom_fields": {
   "available": false,
-  "reason": "Redmine API error: 403 Forbidden",
+  "reason": "API での取得に失敗（...）し、issue 走査によるフォールバックも失敗（...）。",
   "note": "..."
 }
 ```

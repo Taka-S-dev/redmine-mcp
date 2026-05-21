@@ -24,6 +24,7 @@ export function register(server: McpServer, ctx: ToolContext) {
           activities: metadata.activities.length,
         },
         custom_fields_available: metadata.customFieldsAvailable,
+        custom_fields_source: metadata.customFieldsSource,
         custom_fields_error: metadata.customFieldsError,
         activities_available: metadata.activitiesAvailable,
         activities_error: metadata.activitiesError,

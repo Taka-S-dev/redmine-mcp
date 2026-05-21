@@ -71,6 +71,8 @@ REDMINE_API_KEY=xxxxxxxxxxxxxxxxxxxx
 
 API キーは Redmine の **個人設定 → 右側「API アクセスキー」→「表示」** から取得。
 
+> **管理者権限は不要です。** 一般ユーザーの API キーで全ツールが動きます。カスタムフィールド定義の取得 (`/custom_fields.json`) だけは Redmine の仕様で管理者専用ですが、管理者権限が無い場合は issue データから自動的に CF を復元するため、名前指定での絞り込み・集計はそのまま使えます。
+
 ### 推奨構成（プロジェクトスコープを使う場合）
 
 会社のように大量プロジェクトがある Redmine では、対象を絞ると安全＆効率的：
@@ -216,7 +218,7 @@ VSCode を再起動。
 | `list_time_entries` | 工数集計（**親チケットの子全件一括対応**） |
 | `aggregate_issues` | クロス集計（**トークン節約・サーバー側集計**） |
 | `list_projects` | プロジェクト一覧 |
-| `list_custom_fields` | カスタムフィールド一覧（要管理者権限） |
+| `list_custom_fields` | カスタムフィールド一覧（管理者権限が無ければ issue データから自動復元） |
 | `describe_schema` | スキーマ全体（プロジェクト・トラッカー・ステータス・CF・Activity）を一括取得 |
 | `refresh_metadata` | キャッシュ再取得（CF / Activity 追加時など） |
 
@@ -269,7 +271,7 @@ MITM 攻撃に無防備になります。トラブルシューティングの一
 |---|---|
 | `REDMINE_URL が設定されていません` | `.env` を作成・編集 |
 | `Redmine API error: 401` | API キーが間違っている |
-| `Redmine API error: 403`（custom_fields） | 管理者権限のあるユーザーの API キーが必要。なくても他のツールは動く |
+| カスタムフィールドが管理者トークンでしか取れない？ | 不要。管理者権限が無ければ `/custom_fields.json` の代わりに issue データから CF を自動復元する。`describe_schema` の `custom_fields_source`（`api` / `issue-scan`）で現在の取得元が分かる |
 | `self-signed certificate` / `unable to verify the first certificate` | 上記「会社環境」セクション参照 |
 | カスタムフィールド名で絞り込めない | `list_custom_fields` で実際の名前を確認、または `refresh_metadata` |
 | 件数が多すぎて切り捨てられた | `search_issues` の `limit` を増やすか条件を絞る |

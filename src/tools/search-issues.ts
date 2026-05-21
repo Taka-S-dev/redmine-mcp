@@ -332,8 +332,8 @@ export function register(server: McpServer, ctx: ToolContext) {
         if (unresolved.length > 0) {
           if (!metadata.customFieldsAvailable) {
             return errorResult(
-              `カスタムフィールド情報が取得できていません（管理者権限が必要な可能性）: ${metadata.customFieldsError ?? "不明"}。` +
-                `フィールド名→ID 解決ができないため、cf_<id>=<value> 形式での絞り込みは現状サポートできません。`,
+              `カスタムフィールド情報を取得できていません: ${metadata.customFieldsError ?? "不明"}。` +
+                `フィールド名→ID 解決ができないため、custom_fields での絞り込みは使用できません。`,
             );
           }
           return errorResult(

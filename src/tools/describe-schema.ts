@@ -54,9 +54,20 @@ export function register(server: McpServer, ctx: ToolContext) {
               available: false,
               reason: metadata.customFieldsError,
               note:
-                "カスタムフィールド一覧は管理者権限が必要。" +
-                "search_issues の custom_fields 指定は ID 解決ができないため使用不可。",
+                "カスタムフィールド情報を取得できませんでした。" +
+                "search_issues / aggregate_issues の custom_fields 指定は" +
+                "名前→ID 解決ができないため使用不可。",
             },
+        custom_fields_source: metadata.customFieldsSource,
+        ...(metadata.customFieldsSource === "issue-scan"
+          ? {
+              custom_fields_note:
+                "カスタムフィールドは管理者 API ではなく最近の issue データから抽出した" +
+                "（トークンに管理者権限が無いため）。possible_values は『実際に" +
+                "使われている値』で、未使用の選択肢は含まれない。絞り込み・集計には" +
+                "十分だが、全 issue で一度も使われていない CF は一覧に出ない。",
+            }
+          : {}),
         activities: metadata.activitiesAvailable
           ? metadata.activities.map((a) => ({
               id: a.id,

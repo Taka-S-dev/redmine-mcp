@@ -81,11 +81,25 @@ async function main() {
 
   // Warm the metadata cache in the background so the first user query is fast.
   // Failures are non-fatal — the cache will be populated on demand.
-  metadata.get().catch((err) => {
-    process.stderr.write(
-      `[redmine-mcp] 起動時のメタ情報取得に失敗（後で再取得されます）: ${err instanceof Error ? err.message : String(err)}\n`,
-    );
-  });
+  metadata
+    .get()
+    .then((m) => {
+      if (m.customFieldsSource === "issue-scan") {
+        process.stderr.write(
+          `[redmine-mcp] custom_fields.json は管理者専用のため取得不可。` +
+            `issue データから ${m.customFields.length} 件のカスタムフィールドを復元しました。\n`,
+        );
+      } else if (m.customFieldsSource === "none") {
+        process.stderr.write(
+          `[redmine-mcp] カスタムフィールド情報を取得できませんでした: ${m.customFieldsError ?? "不明"}\n`,
+        );
+      }
+    })
+    .catch((err) => {
+      process.stderr.write(
+        `[redmine-mcp] 起動時のメタ情報取得に失敗（後で再取得されます）: ${err instanceof Error ? err.message : String(err)}\n`,
+      );
+    });
 
   process.stderr.write("[redmine-mcp] started\n");
 }
