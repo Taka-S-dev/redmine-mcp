@@ -7,6 +7,29 @@ export interface ToolContext {
   metadata: MetadataCache;
 }
 
+/** 添付ファイルの種別。content_type からの推定で、agent 側の取り扱い判断に使う。 */
+export type AttachmentKind = "text" | "excel" | "pdf" | "image" | "binary";
+
+/**
+ * Redmine 添付の content_type から取り扱い種別を判定する。
+ * review_issue（添付メタの kind 表示）と download_attachment（保存後の hint）の
+ * 両方で使うので共通化してある。
+ */
+export function detectAttachmentKind(contentType: string): AttachmentKind {
+  const ct = (contentType || "").toLowerCase().split(";")[0].trim();
+  if (ct.startsWith("text/")) return "text";
+  if (ct === "application/json" || ct === "application/xml") return "text";
+  if (ct === "application/pdf") return "pdf";
+  if (
+    ct === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+    ct === "application/vnd.ms-excel"
+  ) {
+    return "excel";
+  }
+  if (ct.startsWith("image/")) return "image";
+  return "binary";
+}
+
 /**
  * ローカルタイムゾーン基準の「今日」を YYYY-MM-DD で返す。
  * new Date().toISOString() は UTC 基準なので、日本時間の早朝などに

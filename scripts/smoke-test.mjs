@@ -132,6 +132,42 @@ async function main() {
       journals_count: detail.journals?.length ?? 0,
       relations_count: detail.relations?.length ?? 0,
     }, null, 2));
+
+    console.log(`\n=== review_issue (#${firstId}, required_fields + include_attachments) ===`);
+    const review = unwrap(await rpc("tools/call", {
+      name: "review_issue",
+      arguments: {
+        issue_id: firstId,
+        required_fields: ["assigned_to", "due_date", "description"],
+        include_attachments: true,
+      },
+    }));
+    console.log(JSON.stringify({
+      issue_subject: review.issue?.subject,
+      status_is_closed: review.issue?.status_is_closed,
+      completeness: review.completeness,
+      consistency_flags: review.consistency_flags,
+      attachments_count: review.attachments?.length ?? 0,
+      first_attachment: review.attachments?.[0],
+    }, null, 2));
+
+    const firstAttachment = review.attachments?.[0];
+    if (firstAttachment) {
+      console.log(`\n=== download_attachment (#${firstAttachment.id}) ===`);
+      const dl = unwrap(await rpc("tools/call", {
+        name: "download_attachment",
+        arguments: { issue_id: firstId, attachment_id: firstAttachment.id },
+      }));
+      console.log(JSON.stringify({
+        filename: dl.filename,
+        kind: dl.kind,
+        content_type: dl.content_type,
+        size_bytes: dl.size_bytes,
+        relative_path: dl.relative_path,
+      }, null, 2));
+    } else {
+      console.log("\n=== download_attachment: skipped (no attachments on first issue) ===");
+    }
   }
 
   child.kill();

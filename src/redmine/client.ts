@@ -8,6 +8,7 @@ import type {
   RedmineActivity,
   RedmineTimeEntry,
   RedmineSearchResult,
+  RedmineAttachment,
   PaginatedResponse,
 } from "../types.js";
 
@@ -281,5 +282,82 @@ export class RedmineClient {
       params,
       maxItems,
     );
+  }
+
+  async getAttachment(id: number): Promise<RedmineAttachment> {
+    const res = await this.request<{ attachment: RedmineAttachment }>(
+      `attachments/${id}.json`,
+    );
+    return res.attachment;
+  }
+
+  /**
+   * 添付ファイルの content_url から実体（バイナリ）を取得する。
+   * content_url は Redmine から返される絶対 URL（通常は
+   * /attachments/download/<id>/<filename>）。request<T> と同じリトライ・
+   * タイムアウトポリシーを使うが、レスポンスは JSON ではなく ArrayBuffer
+   * として受け取って Buffer に変換する。
+   *
+   * パース（PDF / Excel 等）は呼び出し側 or 将来のパーサツールの責務。
+   * このメソッドは「認証ヘッダ付きでバイナリを取得する」だけに徹する。
+   */
+  async downloadAttachment(
+    contentUrl: string,
+  ): Promise<{ bytes: Buffer; contentType: string }> {
+    let lastError: unknown;
+
+    for (
+      let attempt = 1;
+      attempt <= RedmineClient.MAX_ATTEMPTS;
+      attempt++
+    ) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(
+        () => controller.abort(),
+        this.config.timeoutMs,
+      );
+      const isLast = attempt === RedmineClient.MAX_ATTEMPTS;
+
+      try {
+        const res = await fetch(contentUrl, {
+          headers: { "X-Redmine-API-Key": this.config.apiKey },
+          signal: controller.signal,
+        });
+
+        if (res.ok) {
+          const buf = Buffer.from(await res.arrayBuffer());
+          return {
+            bytes: buf,
+            contentType:
+              res.headers.get("content-type") ?? "application/octet-stream",
+          };
+        }
+
+        const body = await res.text().catch(() => undefined);
+        const apiError = new RedmineApiError(
+          `Redmine API error: ${res.status} ${res.statusText} (attachment download)`,
+          res.status,
+          body,
+        );
+        if (res.status >= 500 && !isLast) {
+          lastError = apiError;
+        } else {
+          throw apiError;
+        }
+      } catch (err) {
+        if (err instanceof RedmineApiError) throw err;
+        lastError = err;
+        if (isLast) throw err;
+        process.stderr.write(
+          `[redmine-mcp] 添付ダウンロード失敗（${attempt}/${RedmineClient.MAX_ATTEMPTS}）、リトライします\n`,
+        );
+      } finally {
+        clearTimeout(timeoutId);
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 300 * attempt));
+    }
+
+    throw lastError;
   }
 }

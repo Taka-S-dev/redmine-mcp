@@ -15,6 +15,8 @@ import * as listTimeEntries from "./tools/list-time-entries.js";
 import * as aggregateIssues from "./tools/aggregate-issues.js";
 import * as quickSearch from "./tools/quick-search.js";
 import * as exportIssuesCsv from "./tools/export-issues-csv.js";
+import * as reviewIssue from "./tools/review-issue.js";
+import * as downloadAttachment from "./tools/download-attachment.js";
 
 function readConfig() {
   const url = process.env.REDMINE_URL;
@@ -75,6 +77,8 @@ async function main() {
   aggregateIssues.register(server, ctx);
   quickSearch.register(server, ctx);
   exportIssuesCsv.register(server, ctx);
+  reviewIssue.register(server, ctx);
+  downloadAttachment.register(server, ctx);
 
   const transport = new StdioServerTransport();
   await server.connect(transport);

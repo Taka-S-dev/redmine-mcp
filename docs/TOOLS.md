@@ -722,6 +722,126 @@ Redmine API error: 401 Unauthorized
 
 ---
 
+## review_issue
+
+### 何をするか
+
+指定したチケットの **記入もれ** と **内部矛盾** をサーバー側で機械判定し、**定性レビュー（内容のおかしさ判定）のための完全データ**を一括返却する。
+
+3 層モデル（プリミティブ／ポリシー／判断）の「プリミティブ」に位置するツール：
+
+- **プリミティブ（このツール）**: 機械判定 + データ集約のみ。業務固有の知識は持たない
+- **ポリシー**: `required_fields` を呼び出し側（`copilot-instructions.md` 経由の AI）が指定
+- **判断**: 件名と説明の整合・CF 値の妥当性・コメントの噛み合い等は LLM 側で行う
+
+### 引数
+
+| 引数 | 型 | 説明 |
+|---|---|---|
+| `issue_id` | number | レビュー対象のチケット ID |
+| `required_fields` | string[] (任意) | 必須項目。標準は `subject` / `description` / `assigned_to` / `due_date` / `start_date` / `estimated_hours` / `category` / `fixed_version` / `parent`。CF は `cf:<CF名>` |
+| `include_children` | boolean (任意) | 子チケット一覧を含める（親子整合の確認用） |
+| `include_related` | boolean (任意) | 関連チケットを含める |
+| `include_journals` | boolean (任意) | コメント履歴を含める |
+| `include_attachments` | boolean (任意) | 添付メタ（中身は含めない）を含める |
+
+### 返却値
+
+```jsonc
+{
+  "issue": {
+    "id": 123, "url": "...", "subject": "...", "description": "...",
+    "status": "進行中", "status_is_closed": false,
+    "assigned_to": "山田", "due_date": "2026-04-15",
+    "done_ratio": 50, "estimated_hours": 8, "spent_hours": 4,
+    "custom_fields": [{ "name": "カテゴリ", "value": "ログイン" }, ...]
+  },
+  "children": [...],     // include_children=true のとき
+  "relations": [...],    // include_related=true のとき
+  "journals": [...],     // include_journals=true のとき
+  "attachments": [       // include_attachments=true のとき
+    { "id": 5, "filename": "checklist.xlsx", "size_bytes": 12345,
+      "content_type": "...", "kind": "excel", ... }
+  ],
+  "completeness": {
+    "checked": true,
+    "missing": [{ "key": "assigned_to", "present": false }],
+    "present": [{ "key": "due_date", "present": true, "preview": "2026-04-15" }]
+  },
+  "consistency_flags": [
+    "進捗 100% だが状態が '作成'（未完了）。"
+  ],
+  "review_hint": "上記データを読み、(1) 件名と説明の整合 (2) ..."
+}
+```
+
+### 決定論で検出する内部矛盾
+
+- 進捗 100% だが状態が未完了
+- 完了状態だが進捗 < 100%
+- 開始日 > 期日
+- 実績工数が見積の 150% 超え
+
+### 設計意図
+
+「内容のおかしさ」はルール化不可能なので**コードに焼かない**。LLM が返却データを読んで判断する。トラッカー別の必須項目は `copilot-instructions.md` に書き、AI が `required_fields` に翻訳して渡す運用。
+
+### サンプル
+
+```
+# 機能チケットのレビュー
+review_issue(issue_id: 100, required_fields: ["subject","description","assigned_to","cf:カテゴリ","cf:対応方針"])
+
+# バグチケットを親子セットでレビュー
+review_issue(issue_id: 200, required_fields: ["cf:原因","cf:対応方針"], include_children: true, include_journals: true)
+```
+
+---
+
+## download_attachment
+
+### 何をするか
+
+Redmine の添付ファイルをローカルに保存し、ファイルパスとメタ情報を返す。**中身のパース（PDF/Excel 等）は行わない**。
+
+役割分担：
+
+- **このツール**: 認証付きで Redmine から取得 → disk に保存 → メタ情報返却
+- **agent 側**: 返却された `local_path` を自分の Read ツールで開く（Claude Code は PDF・画像ネイティブ対応）
+- **将来**: バイナリ形式の中身パースが必要になったら、`read_attachment` を別途追加（[ARCHITECTURE.md](ARCHITECTURE.md) 参照）
+
+### 引数
+
+| 引数 | 型 | 説明 |
+|---|---|---|
+| `issue_id` | number | 添付の所属するチケット ID（保存先パスの整理用） |
+| `attachment_id` | number | 添付 ID。`review_issue` (`include_attachments=true`) or `get_issue` の `attachments` から取得 |
+| `save_to` | string (任意) | 保存先ディレクトリ。省略時 `exports/attachments/<issue_id>/` |
+
+### 返却値
+
+```jsonc
+{
+  "local_path": "C:\\...\\exports\\attachments\\123\\checklist.xlsx",
+  "relative_path": "exports/attachments/123/checklist.xlsx",
+  "filename": "checklist.xlsx",
+  "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "size_bytes": 12345,
+  "kind": "excel",
+  "hint": "Excel。多くの agent は直接読めない。中身を見るにはパーサ実装が必要..."
+}
+```
+
+`kind` の値：`text` / `pdf` / `excel` / `image` / `binary`。agent はこれを見て読み方を判断する。
+
+### 注意
+
+- 保存先 `exports/` は `.gitignore` で追跡対象外。業務データを安全に置ける
+- ファイル名は path traversal 防止のためサニタイズして保存
+- 重複ファイルは上書きされる
+
+---
+
 ## 拡張する場合
 
 新しいツールを追加する手順：

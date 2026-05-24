@@ -190,6 +190,29 @@ export function register(server: McpServer, ctx: ToolContext) {
 ### CSV に列を追加する
 `export-issues-csv.ts` の `STANDARD_COLUMNS` と `columnValue()` に追記。
 
+### 添付ファイル中身のパーサを追加する（将来の拡張点）
+現状 `download_attachment` はファイルをローカル保存するだけで、中身のパース
+（PDF / Excel 等）は行わない。必要になったら以下の方針で追加する：
+
+1. `src/tools/read-attachment.ts` を新規作成（1 ファイル 1 ツール規約）
+2. `client.downloadAttachment(content_url)` を再利用して Buffer を取得
+3. パーサライブラリは **dynamic import + try/catch** で読み込む：
+   ```ts
+   let ExcelJS;
+   try {
+     ExcelJS = (await import("exceljs")).default;
+   } catch {
+     return errorResult("Excel 読み取りには 'exceljs' が必要。npm install exceljs");
+   }
+   ```
+4. `package.json` には**載せない**（デフォルト依存ゼロを維持）。型は
+   `src/types/optional-parsers.d.ts` に最小シムだけ置く（使うメソッドだけ宣言）
+5. トークン節約のため、`sheet` / `rows` / `pages` / `search` / `max_chars` 等の
+   スライス引数を持たせ、デフォルトはサイズに応じて「概観 or 全文」を返す
+
+この設計により、ユーザーが必要な形式だけ `npm install` で opt-in でき、
+不要なクライアントでは依存を抱えずに済む。
+
 ## 9. 変更時の注意点（ハマりどころ）
 
 - **description を更新し忘れない**：挙動を変えたらツールの `description` も直す。

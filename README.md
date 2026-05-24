@@ -221,6 +221,8 @@ VSCode を再起動。
 | `list_custom_fields` | カスタムフィールド一覧（管理者権限が無ければ issue データから自動復元） |
 | `describe_schema` | スキーマ全体（プロジェクト・トラッカー・ステータス・CF・Activity）を一括取得 |
 | `refresh_metadata` | キャッシュ再取得（CF / Activity 追加時など） |
+| `review_issue` | チケットレビュー（記入もれ・内部矛盾の機械判定 + 定性レビュー用の完全データ取得） |
+| `download_attachment` | 添付ファイルをローカル保存して path を返す（中身は agent の Read 機能で開く） |
 
 **詳細な仕様（引数・返却値・サンプルクエリ）は [docs/TOOLS.md](docs/TOOLS.md) 参照。**
 
