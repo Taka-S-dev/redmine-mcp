@@ -132,9 +132,17 @@ ID / 件名 / ステータス / 進捗率 / 担当者
 ここで定義しておくと、毎回同じレイアウトの CSV が出る。
 
 ▼ 下の【記入例】を参考に、`標準列:` の行を使いたい列構成に書き換える。
-列名は標準フィールド（`id` `url` `subject` `status` `priority` `assigned_to`
-`done_ratio` `start_date` `due_date` 等）と、カスタムフィールド `cf:<CF名>` が使える。
-書いた順に CSV の列が並ぶ。
+列名は標準フィールド（英字 or 日本語別名）とカスタムフィールド `cf:<CF名>` が使える。
+書いた順に CSV の列が並び、**書いた名前がそのままヘッダー**になる（「件名」と書けば見出しは「件名」）。
+
+利用可能な標準列（カッコ内は日本語別名・複数可）:
+`id`(番号) / `url`(リンク) / `subject`(件名・題名) / `project`(プロジェクト) /
+`tracker`(トラッカー・種別) / `status`(ステータス・状態) / `priority`(優先度) /
+`parent_id`(親ID) / `assigned_to`(担当者・担当) / `author`(起票者・作成者) /
+`done_ratio`(進捗率・進捗) / `estimated_hours`(予定工数・見積工数) /
+`spent_hours`(実績工数・実績) / `start_date`(開始日) / `due_date`(期日・締切) /
+`created_on`(作成日時・起票日) / `updated_on`(更新日時) / `closed_on`(完了日時) /
+`description`(説明・本文)
 
 【記入例】（このまま使ってもよい。CF を足したいときは下の「トラッカー別」を参考に）
 
@@ -202,7 +210,16 @@ ID / 件名 / ステータス / 進捗率 / 担当者
 
 **フィールド名の表記**:
 
-- 標準フィールドは英字キー: `subject` / `description` / `assigned_to` / `due_date` / `start_date` / `estimated_hours` / `category` / `fixed_version` / `parent`
+- 標準フィールドは**英字キーまたは日本語別名**で指定可（GUI ラベルでもOK）:
+  - `subject` / 件名・題名・タイトル
+  - `description` / 説明・本文・詳細
+  - `assigned_to` / 担当者・担当・アサイン
+  - `due_date` / 期日・締切・締切日
+  - `start_date` / 開始日・着手日
+  - `estimated_hours` / 予定工数・見積工数・見積時間
+  - `category` / カテゴリ・カテゴリー・分類
+  - `fixed_version` / 対象バージョン・バージョン・リリース
+  - `parent` / 親チケット・親
 - CF は `cf:<CF名>` 形式（GUI で見えてるフィールド名そのままでOK）
 - 「親チケットとの整合」「子チケット群の整合」「添付ファイル」「ステータス × コメント」は "観点専用" のメタ行（必須=- で必須項目化はしない）
 

@@ -12,6 +12,7 @@ import {
   type ToolContext,
 } from "./context.js";
 import { writeCsv } from "./csv.js";
+import { CSV_COLUMN_ALIASES } from "./field-aliases.js";
 import type { RedmineIssue } from "../types.js";
 
 const STANDARD_COLUMNS = [
@@ -49,6 +50,25 @@ const DEFAULT_COLUMNS = [
   "due_date",
   "updated_on",
 ];
+
+/**
+ * 列名を正規化する。受付ける形：
+ *   - 英字キー（大小文字無視、空白除去）→ そのまま小文字英字キーに
+ *   - 日本語別名 → 対応する英字キーに
+ *   - `cf:<名前>` / `CF:<名前>` → `cf:<名前>` に統一
+ *   - それ以外 → null（=不明な列）
+ */
+function resolveColumn(name: string): string | null {
+  const trimmed = name.trim();
+  if (/^cf:/i.test(trimmed)) {
+    return "cf:" + trimmed.slice(3);
+  }
+  const lowered = trimmed.toLowerCase();
+  if ((STANDARD_COLUMNS as readonly string[]).includes(lowered)) {
+    return lowered;
+  }
+  return (CSV_COLUMN_ALIASES as Record<string, string>)[trimmed] ?? null;
+}
 
 const inputShape = {
   // --- 絞り込み（search_issues と同じ） ---
@@ -108,9 +128,10 @@ const inputShape = {
     .optional()
     .describe(
       "CSV に出力する列。省略時は標準的な列セット。" +
-        `標準列: ${STANDARD_COLUMNS.join(", ")}。` +
+        `標準列（英字）: ${STANDARD_COLUMNS.join(", ")}。` +
+        "日本語別名も可（件名 / 担当者 / 期日 / 状態 / 優先度 / 進捗率 / 起票者 / 開始日 / 予定工数 / 実績 / 更新日 / カテゴリ等）。" +
         "カスタムフィールドは 'cf:<フィールド名>'（例: 'cf:カテゴリ'）。" +
-        "指定した順序で列が並ぶ。",
+        "指定した順序で列が並ぶ。CSV のヘッダーには指定した名前そのまま（『件名』と書けば『件名』が見出しになる）。",
     ),
   filename: z
     .string()
@@ -247,18 +268,23 @@ export function register(server: McpServer, ctx: ToolContext) {
       params.sort = sortSpec;
       const limit = args.limit ?? 1000;
 
-      // 列の決定
+      // 列の決定（日本語別名・大小文字違いも resolveColumn が吸収）
       const columns =
         args.fields && args.fields.length > 0 ? args.fields : DEFAULT_COLUMNS;
-      const invalid = columns.filter(
-        (c) =>
-          !(STANDARD_COLUMNS as readonly string[]).includes(c) &&
-          !c.startsWith("cf:"),
-      );
+      const resolvedColumns = columns.map((c) => ({
+        display: c,
+        canonical: resolveColumn(c),
+      }));
+      const invalid = resolvedColumns
+        .filter((r) => r.canonical === null)
+        .map((r) => r.display);
       if (invalid.length > 0) {
+        const aliasList = Object.keys(CSV_COLUMN_ALIASES).join(" / ");
         return errorResult(
           `不明な列指定: ${invalid.join(", ")}。` +
-            `標準列: ${STANDARD_COLUMNS.join(", ")}、またはカスタムフィールドは 'cf:<名前>' 形式。`,
+            `標準列（英字）: ${STANDARD_COLUMNS.join(", ")}。` +
+            `日本語別名: ${aliasList}。` +
+            `カスタムフィールドは 'cf:<名前>' 形式。`,
         );
       }
 
@@ -275,9 +301,13 @@ export function register(server: McpServer, ctx: ToolContext) {
         }
 
         const baseUrl = ctx.client.baseUrl;
-        const headerRow = columns;
+        // ヘッダーはユーザー指定そのまま（『件名』と書けば『件名』が見出し）、
+        // データ抽出は正規化済みの canonical キーで行う
+        const headerRow = resolvedColumns.map((r) => r.display);
         const dataRows = issues.map((issue) =>
-          columns.map((col) => columnValue(issue, col, baseUrl)),
+          resolvedColumns.map((r) =>
+            columnValue(issue, r.canonical as string, baseUrl),
+          ),
         );
 
         const saved = await writeCsv(

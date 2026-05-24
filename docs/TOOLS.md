@@ -324,7 +324,31 @@ Excel で文字化けしないよう **UTF-8 BOM 付き・CRLF 改行**で出力
 | `filename` | string | `issues_<日時>.csv` | 出力ファイル名（`exports/` 配下に保存） |
 
 **`fields` で指定できる列：**
-- 標準列: `id` `url` `subject` `project` `tracker` `status` `priority` `parent_id` `assigned_to` `author` `done_ratio` `estimated_hours` `spent_hours` `start_date` `due_date` `created_on` `updated_on` `closed_on` `description`
+
+標準列（英字 or 日本語別名、大小文字無視。書いた名前がそのまま CSV ヘッダーになる）:
+
+| 英字 | 日本語別名（複数可） |
+|---|---|
+| `id` | 番号 |
+| `url` | リンク / アドレス |
+| `subject` | 件名 / 題名 / タイトル |
+| `project` | プロジェクト |
+| `tracker` | トラッカー / 種別 |
+| `status` | ステータス / 状態 |
+| `priority` | 優先度 |
+| `parent_id` | 親ID / 親チケットID |
+| `assigned_to` | 担当者 / 担当 / アサイン |
+| `author` | 起票者 / 作成者 / 報告者 |
+| `done_ratio` | 進捗率 / 進捗 |
+| `estimated_hours` | 予定工数 / 見積工数 / 見積時間 |
+| `spent_hours` | 実績工数 / 実績時間 / 実績 |
+| `start_date` | 開始日 / 着手日 |
+| `due_date` | 期日 / 締切 / 締切日 |
+| `created_on` | 作成日時 / 作成日 / 起票日時 / 起票日 |
+| `updated_on` | 更新日時 / 更新日 |
+| `closed_on` | 完了日時 / 終了日時 / クローズ日時 |
+| `description` | 説明 / 本文 / 詳細 |
+
 - カスタムフィールド: `cf:<フィールド名>`（例: `cf:カテゴリ`）
 
 ### 返却値
@@ -739,7 +763,7 @@ Redmine API error: 401 Unauthorized
 | 引数 | 型 | 説明 |
 |---|---|---|
 | `issue_id` | number | レビュー対象のチケット ID |
-| `required_fields` | string[] (任意) | 必須項目。標準は `subject` / `description` / `assigned_to` / `due_date` / `start_date` / `estimated_hours` / `category` / `fixed_version` / `parent`。CF は `cf:<CF名>` |
+| `required_fields` | string[] (任意) | 必須項目。標準は英字キーまたは日本語別名で指定可: `subject`(件名/題名) / `description`(説明/本文) / `assigned_to`(担当者/担当) / `due_date`(期日/締切) / `start_date`(開始日) / `estimated_hours`(予定工数/見積工数) / `category`(カテゴリ) / `fixed_version`(対象バージョン) / `parent`(親チケット)。CF は `cf:<CF名>` |
 | `include_children` | boolean (任意) | 子チケット一覧を含める（親子整合の確認用） |
 | `include_related` | boolean (任意) | 関連チケットを含める |
 | `include_journals` | boolean (任意) | コメント履歴を含める |

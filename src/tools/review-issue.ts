@@ -7,6 +7,7 @@ import {
   detectAttachmentKind,
   type ToolContext,
 } from "./context.js";
+import { REVIEW_FIELD_ALIASES } from "./field-aliases.js";
 import type {
   RedmineIssue,
   RedmineCustomField,
@@ -33,9 +34,11 @@ const inputShape = {
     .array(z.string())
     .optional()
     .describe(
-      "記入必須項目の配列。標準フィールドは以下のキーで指定: " +
-        "subject / description / assigned_to / due_date / start_date / " +
-        "estimated_hours / category / fixed_version / parent。" +
+      "記入必須項目の配列。標準フィールドは英字キーまたは日本語別名で指定可: " +
+        "subject(件名/題名/タイトル) / description(説明/本文) / " +
+        "assigned_to(担当者/担当) / due_date(期日/締切) / start_date(開始日) / " +
+        "estimated_hours(予定工数/見積工数) / category(カテゴリ) / " +
+        "fixed_version(対象バージョン/バージョン) / parent(親チケット/親)。" +
         "カスタムフィールドは 'cf:<CF名>'（例: 'cf:カテゴリ'）。" +
         "省略時は記入もれチェックを行わない。トラッカー別の必須項目は " +
         "copilot-instructions.md 等で定義し、AI が呼び出し時に翻訳して渡す想定。",
@@ -81,6 +84,13 @@ const STANDARD_FIELDS = [
 
 type StandardField = (typeof STANDARD_FIELDS)[number];
 
+function resolveStandardField(key: string): StandardField | null {
+  if ((STANDARD_FIELDS as readonly string[]).includes(key)) {
+    return key as StandardField;
+  }
+  return (REVIEW_FIELD_ALIASES as Record<string, StandardField>)[key] ?? null;
+}
+
 interface FieldCheck {
   key: string;
   present: boolean;
@@ -92,56 +102,49 @@ function truncate(s: string, n = 80): string {
   return s.length > n ? s.slice(0, n) + "…" : s;
 }
 
-function checkStandardField(
+function evaluateStandardField(
   issue: RedmineIssue,
-  key: StandardField,
-): FieldCheck {
-  switch (key) {
+  field: StandardField,
+): { present: boolean; preview?: string } {
+  switch (field) {
     case "subject":
       return {
-        key,
         present: !!issue.subject?.trim(),
         preview: issue.subject ? truncate(issue.subject) : undefined,
       };
     case "description": {
       const d = issue.description?.trim();
       return {
-        key,
         present: !!d,
         preview: d ? truncate(d) : undefined,
       };
     }
     case "assigned_to":
       return {
-        key,
         present: !!issue.assigned_to,
         preview: issue.assigned_to?.name,
       };
     case "due_date":
-      return { key, present: !!issue.due_date, preview: issue.due_date };
+      return { present: !!issue.due_date, preview: issue.due_date };
     case "start_date":
-      return { key, present: !!issue.start_date, preview: issue.start_date };
+      return { present: !!issue.start_date, preview: issue.start_date };
     case "estimated_hours":
       return {
-        key,
         present: issue.estimated_hours != null,
         preview: issue.estimated_hours?.toString(),
       };
     case "category":
       return {
-        key,
         present: !!issue.category,
         preview: issue.category?.name,
       };
     case "fixed_version":
       return {
-        key,
         present: !!issue.fixed_version,
         preview: issue.fixed_version?.name,
       };
     case "parent":
       return {
-        key,
         present: !!issue.parent,
         preview: issue.parent ? `#${issue.parent.id}` : undefined,
       };
@@ -219,7 +222,8 @@ export function register(server: McpServer, ctx: ToolContext) {
       const missing: FieldCheck[] = [];
       const invalidKeys: string[] = [];
 
-      for (const key of args.required_fields ?? []) {
+      for (const rawKey of args.required_fields ?? []) {
+        const key = rawKey.trim();
         if (key.startsWith("cf:")) {
           const check = checkCustomField(
             issue,
@@ -227,8 +231,13 @@ export function register(server: McpServer, ctx: ToolContext) {
             metadata.customFields,
           );
           (check.present ? present : missing).push(check);
-        } else if ((STANDARD_FIELDS as readonly string[]).includes(key)) {
-          const check = checkStandardField(issue, key as StandardField);
+          continue;
+        }
+        const canonical = resolveStandardField(key);
+        if (canonical) {
+          const result = evaluateStandardField(issue, canonical);
+          // 出力には呼び出し側が書いたキーを返す（題名 と書いたら 題名 が返る）
+          const check: FieldCheck = { key, ...result };
           (check.present ? present : missing).push(check);
         } else {
           invalidKeys.push(key);
@@ -236,9 +245,12 @@ export function register(server: McpServer, ctx: ToolContext) {
       }
 
       if (invalidKeys.length > 0) {
+        const aliasesList = Object.keys(REVIEW_FIELD_ALIASES).join(" / ");
         return errorResult(
           `required_fields に未知のキーが含まれています: ${invalidKeys.join(", ")}。` +
-            `標準キー: ${STANDARD_FIELDS.join(" / ")}。CF は 'cf:<CF名>' 形式で指定。`,
+            `標準キー（英字）: ${STANDARD_FIELDS.join(" / ")}。` +
+            `日本語別名も可: ${aliasesList}。` +
+            `CF は 'cf:<CF名>' 形式で指定。`,
         );
       }
 
