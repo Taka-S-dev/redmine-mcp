@@ -204,7 +204,7 @@ export function register(server: McpServer, ctx: ToolContext) {
 - **Redmine の特殊値**：`status_id` は `open` / `closed` / `*`、CF は `cf_<id>`。
 - **IDE の誤検知**：エディタ上で `process` `fetch` 等に赤線が出ることがあるが、
   `npm run build`（tsc）が通れば問題ない（IDE の TS サーバーの不調）。
-- **会社固有情報を書かない**：git 追跡されるファイル（src・docs・README・
+- **環境固有情報を書かない**：git 追跡されるファイル（src・docs・README・
   `.example.md`）に実フィールド名・実データ・URL・API キーを書かない。
   業務固有のものは `copilot-instructions.md`（追跡対象外）か `memo/` に。
 

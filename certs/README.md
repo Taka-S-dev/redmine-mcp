@@ -20,7 +20,7 @@
 #### DER → PEM 変換コマンド
 
 ```powershell
-openssl x509 -inform DER -in company-ca.cer -out company-ca.pem
+openssl x509 -inform DER -in internal-ca.cer -out internal-ca.pem
 ```
 
 `openssl` は Git for Windows に同梱されている。なければ：
@@ -33,11 +33,11 @@ winget install ShiningLight.OpenSSL.Light
 プロジェクトルートの `.env` に：
 
 ```dotenv
-NODE_EXTRA_CA_CERTS=certs/company-ca.pem
+NODE_EXTRA_CA_CERTS=certs/internal-ca.pem
 ```
 
 - 相対パス指定可（`npm run dev` 実行ディレクトリ = プロジェクトルートから解決される）
-- 拡張子は `.pem` でなくても OK（`certs/company-ca.cer` でも中身が PEM なら動く）
+- 拡張子は `.pem` でなくても OK（`certs/internal-ca.cer` でも中身が PEM なら動く）
 - 半年後の自分のために `.pem` にリネームしておくと混乱しない
 
 ### 4. 起動
