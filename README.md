@@ -105,9 +105,9 @@ https://redmine.example.com/projects/my-product
 - `project` 引数省略時はスコープ内全プロジェクトに**並列問い合わせ**（fan-out）して結果マージ
 - スコープに含めた identifier が実在しない場合は自動的に除外（404 にならない）
 
-### 社内 CA を使う環境のフルセット例
+### プライベート CA を使う環境のフルセット例
 
-社内 CA 証明書を `certs/` に置く運用なら：
+プライベート CA 証明書を `certs/` に置く運用なら：
 
 ```dotenv
 REDMINE_URL=https://redmine.example.com
@@ -118,13 +118,13 @@ NODE_EXTRA_CA_CERTS=certs/internal-ca.pem
 
 これで起動すれば：
 
-- 社内 CA 経由で接続
+- プライベート CA 経由で接続
 - 3 プロジェクトだけ対象
 - 他チームのプロジェクトには触れない
 
-### 5. （社内 CA を使う環境のみ）証明書を配置
+### 5. （プライベート CA を使う環境のみ）証明書を配置
 
-社内 CA で署名された Redmine に接続する場合は、後述の「[社内 CA・自己署名証明書を使う Redmine の場合](#社内-ca自己署名証明書を使う-redmine-の場合)」セクションを参照。証明書を `certs/` に置いて `.env` に `NODE_EXTRA_CA_CERTS=certs/...` を追記。
+プライベート CA で署名された Redmine に接続する場合は、後述の「[プライベート CA・自己署名証明書を使う Redmine の場合](#プライベート-ca自己署名証明書を使う-redmine-の場合)」セクションを参照。証明書を `certs/` に置いて `.env` に `NODE_EXTRA_CA_CERTS=certs/...` を追記。
 
 ### 6. 動作確認
 
@@ -216,6 +216,76 @@ VSCode を再起動。
 - `.mcp.json` 方式の場合、**MCP クライアントを起動した CWD がプロジェクトディレクトリ**であることが必要
 - 動作確認後に `.env` の値を変えたら、クライアントを再起動して MCP サーバープロセスを再生成すること（プロセス起動時にしか `.env` は読まれない）
 
+### `.mcp.json` の書き方（複数 MCP を併用したい場合）
+
+このプロジェクトの `.mcp.json` は redmine 単体の定義：
+
+```json
+{
+  "mcpServers": {
+    "redmine": {
+      "command": "node",
+      "args": ["--env-file=.env", "--use-system-ca", "dist/index.js"]
+    }
+  }
+}
+```
+
+他の MCP サーバを併用したい場合は `mcpServers` にキーを追加。`cwd` で各 MCP のディレクトリを指定し、`--env-file=.env` で各々の `.env` を読ませるとシンプルになる（環境変数を JSON に直書きしなくて済む）：
+
+```json
+{
+  "mcpServers": {
+    "redmine": {
+      "command": "node",
+      "args": ["--env-file=.env", "--use-system-ca", "dist/index.js"]
+    },
+    "other-mcp": {
+      "command": "node",
+      "args": ["--env-file=.env", "dist/index.js"],
+      "cwd": "C:/absolute/path/to/other-mcp"
+    }
+  }
+}
+```
+
+#### MCP の登録場所は 2 種類ある
+
+MCP サーバを登録する場所は **「プロジェクト同梱」と「個人 PC 専用」の 2 種類**：
+
+| 種類 | 書き込むファイル | git に入る？ | 誰が使える？ |
+|---|---|---|---|
+| **プロジェクト同梱** | `<project>/.mcp.json` | ✅ 入る | このプロジェクトを clone した人**全員**。配布される |
+| **個人 PC 専用** | Claude Code: `~/.claude.json`<br>Copilot CLI: `~/.copilot/mcp-config.json` | ❌ 入らない | **あなたの PC だけ**。他の人には届かない |
+
+##### どっちに書く？
+
+「**他の人にもこの MCP を使ってもらいたい？**」で決める：
+
+- **はい** → プロジェクト同梱（`.mcp.json` に書く）
+- **いいえ／自分だけ使う／他の人に存在を知られたくない** → 個人 PC 専用（CLI で登録）
+
+##### 具体例
+
+- このプロジェクトの `redmine` → 「redmine-mcp を clone した人は当然 redmine を使いたい」 → **プロジェクト同梱**（既にそうなってる）
+- 自前で作った別の MCP（個人用のツール連携等）→ 「自分の環境でだけ使う、他の人には見せたくない」 → **個人 PC 専用**
+
+##### 個人 PC 専用の書き込み方（CLI 経由）
+
+JSON を手で編集せず CLI で登録するのが安全：
+
+```powershell
+# Claude Code
+claude mcp add <名前> --scope user -- node "C:/path/to/mcp/dist/index.js"
+
+# Copilot CLI
+copilot mcp add <名前> -- node "C:/path/to/mcp/dist/index.js"
+```
+
+##### 秘密情報の扱い
+
+API キーやパスワードは **JSON に直書きせず**、`.env` ファイルに書いて `--env-file=.env` 経由で読み込ませる。JSON は git に入りやすいので、JSON 直書きは事故のもと。
+
 ## 提供ツール
 
 | ツール                | 用途                                                                              |
@@ -245,13 +315,13 @@ VSCode を再起動。
 
 **コードを修正・拡張する場合は、まず [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)（設計書）を読んでください。** 全体構成・設計思想・拡張手順・注意点がまとまっています。
 
-## 社内 CA・自己署名証明書を使う Redmine の場合
+## プライベート CA・自己署名証明書を使う Redmine の場合
 
-Node.js は**デフォルトで Windows の証明書ストアを参照しません**。社内 CA で署名された Redmine に接続すると「自己署名証明書」エラーになります。
+Node.js は**デフォルトで Windows の証明書ストアを参照しません**。プライベート CA で署名された Redmine に接続すると「自己署名証明書」エラーになります。
 
 ### 解決策 ①（推奨）: `--use-system-ca`
 
-`package.json` の `dev` / `start` スクリプトには **`--use-system-ca` フラグが付与済み**です。Windows 証明書ストアに社内 CA がインストール済みであれば、追加作業なしで接続できます。
+`package.json` の `dev` / `start` スクリプトには **`--use-system-ca` フラグが付与済み**です。Windows 証明書ストアにプライベート CA がインストール済みであれば、追加作業なしで接続できます。
 
 ```bash
 npm run dev     # 内部で node --use-system-ca が走る
@@ -283,7 +353,7 @@ MITM 攻撃に無防備になります。トラブルシューティングの一
 | `REDMINE_URL が設定されていません`                                   | `.env` を作成・編集                                                                                                                                                                       |
 | `Redmine API error: 401`                                             | API キーが間違っている                                                                                                                                                                    |
 | カスタムフィールドが管理者トークンでしか取れない？                   | 不要。管理者権限が無ければ `/custom_fields.json` の代わりに issue データから CF を自動復元する。`describe_schema` の `custom_fields_source`（`api` / `issue-scan`）で現在の取得元が分かる |
-| `self-signed certificate` / `unable to verify the first certificate` | 上記「社内 CA・自己署名証明書を使う Redmine の場合」セクション参照                                                                                                                        |
+| `self-signed certificate` / `unable to verify the first certificate` | 上記「プライベート CA・自己署名証明書を使う Redmine の場合」セクション参照                                                                                                                        |
 | カスタムフィールド名で絞り込めない                                   | `list_custom_fields` で実際の名前を確認、または `refresh_metadata`                                                                                                                        |
 | 件数が多すぎて切り捨てられた                                         | `search_issues` の `limit` を増やすか条件を絞る                                                                                                                                           |
 | 完全一致でしかヒットしない                                           | 曖昧検索は `quick_search`、CF 値の部分一致は `custom_field_match: "partial"`                                                                                                              |
