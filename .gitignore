@@ -13,6 +13,7 @@
 !package-lock.json
 !tsconfig.json
 !README.md
+!LICENSE
 !.env.example
 !.mcp.json
 !copilot-instructions.example.md

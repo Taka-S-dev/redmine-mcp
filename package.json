@@ -2,6 +2,7 @@
   "name": "redmine-mcp",
   "version": "0.1.0",
   "description": "Redmine MCP server for AI agents (Copilot CLI, Claude Code, etc.)",
+  "license": "MIT",
   "type": "module",
   "bin": {
     "redmine-mcp": "./dist/index.js"

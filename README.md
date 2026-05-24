@@ -25,6 +25,7 @@ Redmine のチケット検索・集計・分析を、AI エージェント（Git
 ### 1. コードを取得
 
 git を使う場合：
+
 ```powershell
 git clone <このリポジトリ URL> Redmine
 cd Redmine
@@ -51,11 +52,13 @@ npm run build
 ### 4. `.env` を作成
 
 PowerShell:
+
 ```powershell
 Copy-Item .env.example .env
 ```
 
 Git Bash / WSL:
+
 ```bash
 cp .env.example .env
 ```
@@ -88,6 +91,7 @@ REDMINE_PROJECTS=my-product,my-product-mobile
 #### identifier の確認方法
 
 Redmine でプロジェクトのトップページを開いたときの URL：
+
 ```
 https://redmine.example.com/projects/my-product
                                      ^^^^^^^^^^
@@ -113,6 +117,7 @@ NODE_EXTRA_CA_CERTS=certs/internal-ca.pem
 ```
 
 これで起動すれば：
+
 - 社内 CA 経由で接続
 - 3 プロジェクトだけ対象
 - 他チームのプロジェクトには触れない
@@ -191,7 +196,11 @@ VSCode を **このプロジェクトのフォルダで開く**だけ。Claude C
   "mcpServers": {
     "redmine": {
       "command": "node",
-      "args": ["--env-file=.env", "--use-system-ca", "<このプロジェクトの絶対パス>/dist/index.js"],
+      "args": [
+        "--env-file=.env",
+        "--use-system-ca",
+        "<このプロジェクトの絶対パス>/dist/index.js"
+      ],
       "cwd": "<このプロジェクトの絶対パス>"
     }
   }
@@ -209,20 +218,20 @@ VSCode を再起動。
 
 ## 提供ツール
 
-| ツール | 用途 |
-|---|---|
-| `search_issues` | チケットを条件で厳密に検索。overdue / count_only / parent_id 等の便利フィルタあり |
-| `quick_search` | 曖昧なキーワードで全文検索（件名・本文・コメント横断） |
-| `get_issue` | チケット詳細 + コメント履歴 + 関連チケット |
-| `export_issues_csv` | チケットを CSV エクスポート（**サーバー側生成で高速・Excel 対応**） |
-| `list_time_entries` | 工数集計（**親チケットの子全件一括対応**） |
-| `aggregate_issues` | クロス集計（**トークン節約・サーバー側集計**） |
-| `list_projects` | プロジェクト一覧 |
-| `list_custom_fields` | カスタムフィールド一覧（管理者権限が無ければ issue データから自動復元） |
-| `describe_schema` | スキーマ全体（プロジェクト・トラッカー・ステータス・CF・Activity）を一括取得 |
-| `refresh_metadata` | キャッシュ再取得（CF / Activity 追加時など） |
-| `review_issue` | チケットレビュー（記入もれ・内部矛盾の機械判定 + 定性レビュー用の完全データ取得） |
-| `download_attachment` | 添付ファイルをローカル保存して path を返す（中身は agent の Read 機能で開く） |
+| ツール                | 用途                                                                              |
+| --------------------- | --------------------------------------------------------------------------------- |
+| `search_issues`       | チケットを条件で厳密に検索。overdue / count_only / parent_id 等の便利フィルタあり |
+| `quick_search`        | 曖昧なキーワードで全文検索（件名・本文・コメント横断）                            |
+| `get_issue`           | チケット詳細 + コメント履歴 + 関連チケット                                        |
+| `export_issues_csv`   | チケットを CSV エクスポート（**サーバー側生成で高速・Excel 対応**）               |
+| `list_time_entries`   | 工数集計（**親チケットの子全件一括対応**）                                        |
+| `aggregate_issues`    | クロス集計（**トークン節約・サーバー側集計**）                                    |
+| `list_projects`       | プロジェクト一覧                                                                  |
+| `list_custom_fields`  | カスタムフィールド一覧（管理者権限が無ければ issue データから自動復元）           |
+| `describe_schema`     | スキーマ全体（プロジェクト・トラッカー・ステータス・CF・Activity）を一括取得      |
+| `refresh_metadata`    | キャッシュ再取得（CF / Activity 追加時など）                                      |
+| `review_issue`        | チケットレビュー（記入もれ・内部矛盾の機械判定 + 定性レビュー用の完全データ取得） |
+| `download_attachment` | 添付ファイルをローカル保存して path を返す（中身は agent の Read 機能で開く）     |
 
 **詳細な仕様（引数・返却値・サンプルクエリ）は [docs/TOOLS.md](docs/TOOLS.md) 参照。**
 
@@ -269,17 +278,17 @@ MITM 攻撃に無防備になります。トラブルシューティングの一
 
 ## トラブルシューティング
 
-| 症状 | 対処 |
-|---|---|
-| `REDMINE_URL が設定されていません` | `.env` を作成・編集 |
-| `Redmine API error: 401` | API キーが間違っている |
-| カスタムフィールドが管理者トークンでしか取れない？ | 不要。管理者権限が無ければ `/custom_fields.json` の代わりに issue データから CF を自動復元する。`describe_schema` の `custom_fields_source`（`api` / `issue-scan`）で現在の取得元が分かる |
-| `self-signed certificate` / `unable to verify the first certificate` | 上記「社内 CA・自己署名証明書を使う Redmine の場合」セクション参照 |
-| カスタムフィールド名で絞り込めない | `list_custom_fields` で実際の名前を確認、または `refresh_metadata` |
-| 件数が多すぎて切り捨てられた | `search_issues` の `limit` を増やすか条件を絞る |
-| 完全一致でしかヒットしない | 曖昧検索は `quick_search`、CF 値の部分一致は `custom_field_match: "partial"` |
-| CSV 出力が遅い | `export_issues_csv` を使う（サーバー側生成で高速。LLM に表を書かせない） |
-| CSV を Excel で開くと文字化け | `export_issues_csv` は UTF-8 BOM 付きで出力するので化けない。手書き CSV なら BOM を付ける |
+| 症状                                                                 | 対処                                                                                                                                                                                      |
+| -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `REDMINE_URL が設定されていません`                                   | `.env` を作成・編集                                                                                                                                                                       |
+| `Redmine API error: 401`                                             | API キーが間違っている                                                                                                                                                                    |
+| カスタムフィールドが管理者トークンでしか取れない？                   | 不要。管理者権限が無ければ `/custom_fields.json` の代わりに issue データから CF を自動復元する。`describe_schema` の `custom_fields_source`（`api` / `issue-scan`）で現在の取得元が分かる |
+| `self-signed certificate` / `unable to verify the first certificate` | 上記「社内 CA・自己署名証明書を使う Redmine の場合」セクション参照                                                                                                                        |
+| カスタムフィールド名で絞り込めない                                   | `list_custom_fields` で実際の名前を確認、または `refresh_metadata`                                                                                                                        |
+| 件数が多すぎて切り捨てられた                                         | `search_issues` の `limit` を増やすか条件を絞る                                                                                                                                           |
+| 完全一致でしかヒットしない                                           | 曖昧検索は `quick_search`、CF 値の部分一致は `custom_field_match: "partial"`                                                                                                              |
+| CSV 出力が遅い                                                       | `export_issues_csv` を使う（サーバー側生成で高速。LLM に表を書かせない）                                                                                                                  |
+| CSV を Excel で開くと文字化け                                        | `export_issues_csv` は UTF-8 BOM 付きで出力するので化けない。手書き CSV なら BOM を付ける                                                                                                 |
 
 ## アーキテクチャ
 
@@ -309,3 +318,7 @@ src/
 依存は `@modelcontextprotocol/sdk` と `zod` のみ（サプライチェーン最小化）。HTTP は Node 標準の `fetch`、環境変数は `node --env-file`、CSV 書き出しは `node:fs` を利用。
 
 詳しい設計（レイヤー構造・各モジュールの責務・拡張方法・修正時の注意点）は **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** にまとめています。
+
+## ライセンス
+
+[MIT License](LICENSE)
