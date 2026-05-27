@@ -31,6 +31,59 @@ export function detectAttachmentKind(contentType: string): AttachmentKind {
 }
 
 /**
+ * 検索条件と同じ条件の Redmine 画面（issues 一覧）を開ける URL を組み立てる。
+ * AI が「同僚に共有したい」「ブラウザで全件視覚確認したい」シナリオで応答に同梱する用。
+ *
+ * - `set_filter=1` を付けて Redmine のフィルタ表示モードを有効化
+ * - API で使ったクエリパラメータ（status_id, tracker_id, assigned_to_id, cf_<id>, etc.）を
+ *   そのままブラウザ URL のパラメータとしてエンコード
+ * - URL エンコードは URLSearchParams に任せる（日本語 CF 値も正しく扱える）
+ */
+export function buildIssuesBrowserUrl(
+  baseUrl: string,
+  params: Record<string, string | number | undefined>,
+): string {
+  const sp = new URLSearchParams({ set_filter: "1" });
+  for (const [key, val] of Object.entries(params)) {
+    if (val === undefined || val === null || val === "") continue;
+    sp.set(key, String(val));
+  }
+  return `${baseUrl}/issues?${sp.toString()}`;
+}
+
+/**
+ * 検索条件をブラウザで開ける URL に変換し、レスポンス用フィールドとして返す。
+ *
+ * - 単一プロジェクト / unscoped → `browser_url`（1 本）
+ * - fan-out（複数プロジェクト並列）→ `browser_urls`（プロジェクトごとの URL 配列）
+ *   Redmine UI は 1 プロジェクトの issues 一覧しか扱えないため、fan-out では複数 URL を返す。
+ *
+ * `search_issues` / `aggregate_issues` の応答に spread して含めるのが想定用法。
+ */
+export function browserUrlFields(
+  baseUrl: string,
+  projectSelection: Exclude<ProjectSelection, { kind: "error" }>,
+  params: Record<string, string | number | undefined>,
+): { browser_url?: string; browser_urls?: string[] } {
+  if (projectSelection.kind === "single") {
+    return {
+      browser_url: buildIssuesBrowserUrl(baseUrl, {
+        ...params,
+        project_id: projectSelection.identifier,
+      }),
+    };
+  }
+  if (projectSelection.kind === "unscoped") {
+    return { browser_url: buildIssuesBrowserUrl(baseUrl, params) };
+  }
+  return {
+    browser_urls: projectSelection.identifiers.map((p) =>
+      buildIssuesBrowserUrl(baseUrl, { ...params, project_id: p }),
+    ),
+  };
+}
+
+/**
  * ローカルタイムゾーン基準の「今日」を YYYY-MM-DD で返す。
  * new Date().toISOString() は UTC 基準なので、日本時間の早朝などに
  * 日付が 1 日ずれる。overdue 判定や「今日」の計算にはこちらを使う。

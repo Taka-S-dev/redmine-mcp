@@ -6,6 +6,7 @@ import {
   errorResult,
   selectProjects,
   fetchIssuesForSelection,
+  browserUrlFields,
   sortIssuesBySpec,
   resolveCfFilterValue,
   localDateString,
@@ -163,7 +164,10 @@ export function register(server: McpServer, ctx: ToolContext) {
         "カスタムフィールド名は日本語のまま指定でき、内部で ID に解決される。" +
         "overdue=true で期限切れ抽出、parent_id で親チケット配下の子チケット列挙、count_only=true で件数だけ取得（トークン節約）が可能。" +
         "各チケットの応答に parent_id が含まれる（値があれば子チケット、null なら親チケット）。" +
-        "各チケットの url フィールドにブラウザで開けるリンクが含まれているので、リンク提示の際はこれをそのまま使うこと（ベース URL を別途ユーザーに尋ねる必要はない）。",
+        "各チケットの url フィールドにブラウザで開けるリンクが含まれているので、リンク提示の際はこれをそのまま使うこと（ベース URL を別途ユーザーに尋ねる必要はない）。" +
+        "応答の browser_url（or fan-out 時は browser_urls）に同じフィルタ条件をブラウザで開ける URL が入る。" +
+        "「全件を視覚的に確認したい」「同僚に条件付きで共有したい」とユーザーが意図しているとき、この URL を提示すると効率的。" +
+        "AI が独自に URL を組み立てず、必ずレスポンスの browser_url をそのまま使うこと。",
       inputSchema: inputShape,
     },
     async (args) => {
@@ -357,6 +361,7 @@ export function register(server: McpServer, ctx: ToolContext) {
           );
           return jsonResult({
             total_count: result.total_count,
+            ...browserUrlFields(ctx.client.baseUrl, projectSelection, params),
             query: params,
             scope:
               projectSelection.kind === "fanOut"
@@ -394,6 +399,7 @@ export function register(server: McpServer, ctx: ToolContext) {
         return jsonResult({
           total_count: result.total_count,
           returned: trimmed.length,
+          ...browserUrlFields(ctx.client.baseUrl, projectSelection, params),
           query: params,
           scope:
             projectSelection.kind === "fanOut"
@@ -478,3 +484,4 @@ function trimIssueForList(issue: RedmineIssue, baseUrl: string) {
     })),
   };
 }
+

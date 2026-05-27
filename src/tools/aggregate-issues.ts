@@ -6,6 +6,7 @@ import {
   errorResult,
   selectProjects,
   fetchIssuesForSelection,
+  browserUrlFields,
   resolveCfFilterValue,
   localDateString,
   type ToolContext,
@@ -129,7 +130,9 @@ export function register(server: McpServer, ctx: ToolContext) {
         "Redmine のチケットを取得 → 指定の軸でグループ化し、件数や工数の合計を計算する。" +
         "search_issues で全件取得してから LLM 側で集計するより遥かにトークン効率が良い。" +
         "「担当者別の未完了件数」「カテゴリ × 優先度のクロス集計」「バグトラッカーの工数オーバー TOP5」等に使用する。" +
-        "group_by は複数指定可（クロス集計）、metrics で件数/工数/進捗率を計算、top で上位だけ返す。",
+        "group_by は複数指定可（クロス集計）、metrics で件数/工数/進捗率を計算、top で上位だけ返す。" +
+        "source.browser_url（or fan-out 時は browser_urls）に集計対象と同じフィルタ条件をブラウザで開ける URL が入る。" +
+        "ユーザーが「集計内訳を視覚的に確認したい」「同僚に元データを共有したい」ときに提示するとよい。",
       inputSchema: inputShape,
     },
     async (args) => {
@@ -366,6 +369,7 @@ export function register(server: McpServer, ctx: ToolContext) {
               projectSelection.kind === "fanOut"
                 ? { fan_out: projectSelection.identifiers }
                 : undefined,
+            ...browserUrlFields(ctx.client.baseUrl, projectSelection, params),
           },
           group_by: groupKeys,
           metrics,
